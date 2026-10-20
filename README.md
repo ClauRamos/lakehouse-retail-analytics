@@ -46,9 +46,9 @@ Fuentes (CSV, APIs, DBs)
 ↓
  GOLD → Agregaciones de negocio
 
+'''text
 
-
-##  Stack tecnológico
+## 🛠️ Stack tecnológico
 
 | **Lenguaje** | Python 3.11+ | Lógica del pipeline |
 | **Procesamiento** | PySpark | Transformaciones distribuidas |
@@ -59,7 +59,8 @@ Fuentes (CSV, APIs, DBs)
 | **CI/CD** | GitHub Actions | Correr tests automáticamente |
 | **Visualización** | Streamlit / Power BI | Dashboard final |
 | **Control de versiones** | Git + GitHub | Historial del código |
-
+ 
+ ```text
 ##  Estructura del proyecto
 lakehouse-retail-analytics/
 │
@@ -88,7 +89,7 @@ lakehouse-retail-analytics/
 ├── LICENSE # Licencia MIT
 └── README.md # Este archivo
 
-text
+'''
 
 ##  Cómo ejecutarlo
 
@@ -133,7 +134,7 @@ pytest tests/
  Licencia
 Este proyecto está bajo la licencia MIT. Ver LICENSE para más detalles.
 
-text
+'''text
 
 ---
 
