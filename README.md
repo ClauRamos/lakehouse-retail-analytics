@@ -46,9 +46,9 @@ Fuentes (CSV, APIs, DBs)
 ↓
  GOLD → Agregaciones de negocio
 
-'''text
 
-## 🛠️ Stack tecnológico
+
+##  Stack tecnológico
 
 | **Lenguaje** | Python 3.11+ | Lógica del pipeline |
 | **Procesamiento** | PySpark | Transformaciones distribuidas |
