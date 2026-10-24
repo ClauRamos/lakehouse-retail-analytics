@@ -1,27 +1,27 @@
-#  Lakehouse Retail Analytics
+# Lakehouse Retail Analytics
 
-> Pipeline de datos end-to-end con arquitectura Medallion (Bronze/Silver/Gold) para análisis de ventas retail, construido con PySpark, Delta Lake y Databricks.
+> Pipeline de datos end-to-end con arquitectura Medallion (Bronze / Silver / Gold) para analizar ventas retail, construido con PySpark y Delta Lake, con un dashboard en Streamlit.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
-[![PySpark](https://img.shields.io/badge/PySpark-3.5-orange.svg)](https://spark.apache.org/)
-[![Delta Lake](https://img.shields.io/badge/Delta_Lake-3.0-green.svg)](https://delta.io/)
+[![PySpark](https://img.shields.io/badge/PySpark-3.5.1-orange.svg)](https://spark.apache.org/)
+[![Delta Lake](https://img.shields.io/badge/Delta_Lake-3.2.0-green.svg)](https://delta.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-##  Tabla de contenidos
+## Tabla de contenidos
 
-- [ ¿Qué resuelve este proyecto?](#-qué-resuelve-este-proyecto)
-- [ Arquitectura](#️-arquitectura)
-- [ Stack tecnológico](#️-stack-tecnológico)
-- [ Estructura del proyecto](#-estructura-del-proyecto)
-- [ Cómo ejecutarlo](#-cómo-ejecutarlo)
-- [ Resultados](#-resultados)
-- [ Tests](#-tests)
-- [ Licencia](#-licencia)
+- [¿Qué resuelve este proyecto?](#qué-resuelve-este-proyecto)
+- [Arquitectura](#arquitectura)
+- [Dataset y calidad de datos](#dataset-y-calidad-de-datos)
+- [Stack tecnológico](#stack-tecnológico)
+- [Estructura del proyecto](#estructura-del-proyecto)
+- [Cómo ejecutarlo](#cómo-ejecutarlo)
+- [Resultados](#resultados)
+- [Tests](#tests)
+- [Licencia](#licencia)
 
-##  ¿Qué resuelve este proyecto?
+## ¿Qué resuelve este proyecto?
 
-Este proyecto implementa un **pipeline de datos end-to-end** que transforma datos crudos de ventas retail en tablas analíticas listas para consumo, siguiendo la **arquitectura Medallion**:
-
+Transforma datos crudos de ventas retail (un CSV con errores reales de calidad) en tablas analíticas listas para consumir, siguiendo la **arquitectura Medallion**.
 
 ### Preguntas de negocio que responde
 
@@ -30,74 +30,101 @@ Este proyecto implementa un **pipeline de datos end-to-end** que transforma dato
 - ¿Cuál es la tasa de devoluciones por canal de venta?
 - ¿Cómo evolucionan las ventas mes a mes?
 
-##  Arquitectura
+## Arquitectura
 
-El proyecto sigue la **arquitectura Medallion**, un patrón de diseño de datos recomendado por Databricks que organiza los datos en tres capas con niveles crecientes de calidad:
+La arquitectura Medallion organiza los datos en tres capas con calidad creciente:
 
-**Bronze** | **Silver** | **Gold**  
+```text
+data/raw  (CSV original, nunca se modifica)
+   │
+   ▼
+BRONZE  →  Ingesta fiel del CSV, guardada como tabla Delta
+   │
+   ▼
+SILVER  →  Limpieza, recuperación de valores corruptos y deduplicación
+   │
+   ▼
+GOLD    →  Agregaciones de negocio para el dashboard
+```
 
-### Flujo del pipeline
+| Capa | Qué hace | Script |
+| --- | --- | --- |
+| **Bronze** | Lee `sales_raw.csv` y lo guarda tal cual en formato Delta | `src/bronze/ingest.py` |
+| **Silver** | Limpia y valida los datos (reglas más abajo) | `src/silver/clean.py` |
+| **Gold** | Calcula ingresos por categoría, evolución mensual, productos por región y devoluciones por canal | `src/gold/aggregate.py` |
 
-Fuentes (CSV, APIs, DBs)
-↓
- BRONZE → Ingesta cruda + metadata
-↓
- SILVER → Limpieza, tipado, deduplicación
-↓
- GOLD → Agregaciones de negocio
+## Dataset y calidad de datos
 
-'''text
+`data/raw/sales_raw.csv` tiene **5.050 filas y 13 columnas** (`order_id`, `order_date`, `customer_id`, `product_id`, `product_name`, `category`, `region`, `channel`, `quantity`, `unit_price`, `discount`, `total_amount`, `status`), con ventas de 2023-01 a 2024-12.
 
-## 🛠️ Stack tecnológico
+Problemas detectados y cómo los resuelve la capa Silver:
 
-| **Lenguaje** | Python 3.11+ | Lógica del pipeline |
-| **Procesamiento** | PySpark | Transformaciones distribuidas |
-| **Almacenamiento** | Delta Lake | Formato ACID con versionado |
-| **Cloud/IDE** | Databricks Community | Desarrollo y pruebas |
-| **Orquestación** | Prefect | Ejecutar las capas en orden |
-| **Testing** | pytest | Validar cada capa |
-| **CI/CD** | GitHub Actions | Correr tests automáticamente |
-| **Visualización** | Streamlit / Power BI | Dashboard final |
-| **Control de versiones** | Git + GitHub | Historial del código |
- 
- ```text
-##  Estructura del proyecto
+| Problema en el dato crudo | Tratamiento en Silver |
+| --- | --- |
+| 50 filas duplicadas exactas | Se eliminan |
+| 100 filas con `quantity = -1` (dato corrupto, no una devolución) | La cantidad real se recupera desde `total_amount / (unit_price × (1 − discount))` |
+| 103 descuentos nulos (en 63 casos sí hubo descuento) | El descuento se deduce desde `total_amount` en lugar de asumir 0 |
+| 1 fila con cantidad negativa y descuento nulo a la vez | Se descarta: no se puede reconstruir |
+| 45 `customer_id` y 20 `product_name` nulos | Se reemplazan por `UNKNOWN` |
+| Espacios y mayúsculas inconsistentes en texto | `trim` y mayúscula inicial en `region` y `category` |
+
+Resultado: **5.050 filas en Bronze → 4.999 en Silver**. Un control final verifica que `total_amount` coincida con `quantity × unit_price × (1 − discount)` en todas las filas.
+
+> Las devoluciones reales están en la columna `status` (`Completed`, `Returned`, `Cancelled`), no en el signo de la cantidad.
+
+### Reglas de negocio de la capa Gold
+
+- **Ingresos** = suma de `total_amount` solo de órdenes con `status = Completed`.
+- **Tasa de devoluciones por canal** = órdenes `Returned` / total de órdenes del canal.
+
+## Stack tecnológico
+
+| Componente | Tecnología | Uso |
+| --- | --- | --- |
+| Lenguaje | Python 3.11+ | Lógica del pipeline |
+| Procesamiento | PySpark 3.5.1 | Transformaciones |
+| Almacenamiento | Delta Lake 3.2.0 | Formato ACID con versionado |
+| Configuración | python-dotenv | Rutas de Java y Hadoop por máquina |
+| Testing | pytest | Validar cada capa |
+| Visualización | Streamlit + pandas + deltalake | Dashboard de ventas (lee la capa Gold sin necesitar Spark) |
+| Control de versiones | Git + GitHub | Historial del código |
+
+## Estructura del proyecto
+
+```text
 lakehouse-retail-analytics/
 │
-├── data/ # Datos en cada capa del pipeline
-│ ├── raw/ # Datos originales (nunca se modifican)
-│ ├── bronze/ # Datos ingestados crudos + metadata
-│ ├── silver/ # Datos limpios y validados
-│ └── gold/ # Datos agregados para negocio
+├── data/                # Datos en cada capa (bronze/silver/gold se generan al ejecutar)
+│   ├── raw/             # CSV original, nunca se modifica
+│   ├── bronze/
+│   ├── silver/
+│   └── gold/
 │
-├── notebooks/ # Prototipos en Databricks
+├── src/                 # Código del pipeline
+│   ├── utils/           # Sesión de Spark
+│   ├── bronze/          # Ingesta
+│   ├── silver/          # Limpieza
+│   └── gold/            # Agregaciones
 │
-├── src/ # Código de producción
-│ ├── config/ # Configuración (paths, constantes)
-│ ├── utils/ # Utilidades (logger, spark session)
-│ ├── bronze/ # Lógica de ingesta
-│ ├── silver/ # Lógica de limpieza
-│ └── gold/ # Lógica de agregación
+├── app.py               # Dashboard Streamlit
+├── tests/               # Tests con pytest
+├── docs/                # Documentación y capturas
 │
-├── tests/ # Tests automatizados con pytest
-├── docs/ # Documentación y diagramas
-│
-├── .github/workflows/ # CI/CD con GitHub Actions
-│
-├── .gitignore # Archivos que Git no debe versionar
-├── requirements.txt # Dependencias del proyecto
-├── LICENSE # Licencia MIT
-└── README.md # Este archivo
+├── .env.example         # Plantilla de configuración local
+├── .gitignore
+├── requirements.txt
+├── LICENSE
+└── README.md
+```
 
-'''
-
-##  Cómo ejecutarlo
+## Cómo ejecutarlo
 
 ### Requisitos previos
 
-- Python 3.11+
+- Python 3.11+ (probado con 3.13)
 - Java 17 (necesario para PySpark)
 - Git
+- **Solo en Windows:** `winutils.exe` y `hadoop.dll` de Hadoop 3.3.x dentro de `C:\hadoop\bin` (por ejemplo desde [cdarlint/winutils](https://github.com/cdarlint/winutils))
 
 ### Instalación
 
@@ -106,35 +133,61 @@ lakehouse-retail-analytics/
 git clone https://github.com/ClauRamos/lakehouse-retail-analytics.git
 cd lakehouse-retail-analytics
 
-# 2. Crear entorno virtual
+# 2. Crear y activar el entorno virtual
 python -m venv venv
 venv\Scripts\activate          # Windows
 # source venv/bin/activate     # Mac/Linux
 
 # 3. Instalar dependencias
 pip install -r requirements.txt
-Ejecución
-bash
-# Correr el pipeline completo
-python -m src.pipeline
+```
 
-# Correr solo una capa
+### Configuración
+
+Copiá `.env.example` a `.env` y ajustá las rutas a tu máquina:
+
+```text
+JAVA_HOME=C:\ruta\a\jdk-17
+HADOOP_HOME=C:\hadoop        # solo Windows
+```
+
+### Ejecución
+
+Desde la raíz del proyecto, con el entorno virtual activo:
+
+```bash
+# Pipeline, capa por capa
 python -m src.bronze.ingest
 python -m src.silver.clean
 python -m src.gold.aggregate
 
-# Correr los tests
+# Dashboard
+streamlit run app.py
+
+# Tests
 pytest tests/
- Resultados
-(Próximamente: capturas de dashboards y tablas Gold)
+```
 
+> En Windows, al cerrar Spark pueden aparecer mensajes `ShutdownHookManager ... Failed to delete` o `CORRECTO: el proceso con PID ... ha sido terminado`. Son avisos de limpieza de archivos temporales y no afectan los resultados.
 
-(Próximamente: descripción de los tests implementados)
+Las carpetas `data/bronze`, `data/silver` y `data/gold` no se versionan: se generan al ejecutar el pipeline, y el dashboard necesita que la capa Gold exista.
 
- Licencia
-Este proyecto está bajo la licencia MIT. Ver LICENSE para más detalles.
+## Resultados
 
-'''text
+![Dashboard de ventas](docs/dashboard.png)
 
----
+KPIs del dataset (órdenes completadas):
 
+| Indicador | Valor |
+| --- | --- |
+| Ingresos totales | $4.200.714,89 |
+| Órdenes completadas | 2.986 |
+| Órdenes registradas (todos los estados) | 4.999 |
+
+## Tests
+
+Próximamente: descripción de los tests implementados.
+
+## Licencia
+
+Este proyecto está bajo la licencia MIT. Ver [LICENSE](LICENSE) para más detalles.
