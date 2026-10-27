@@ -179,20 +179,9 @@ Las carpetas `data/bronze`, `data/silver` y `data/gold` no se versionan: se gene
 
 ## Resultados
 
-<img src="docs/dashboard.png" alt="Vista previa del dashboard de ventas" width="900">
+![Dashboard de ventas](docs/dashboard.png)
 
-### Ver el dashboard
-
-El dashboard se ejecuta en tu máquina con Streamlit. Necesita que exista la capa Gold, así que hay que correr el pipeline una vez:
-
-```bash
-python -m src.pipeline
-streamlit run app.py
-```
-
-Se abre en `http://localhost:8501`.
-
-### KPIs del dataset (órdenes completadas)
+KPIs del dataset (órdenes completadas):
 
 | Indicador | Valor |
 | --- | --- |
@@ -204,7 +193,18 @@ Se abre en `http://localhost:8501`.
 
 ## Tests
 
-Próximamente: descripción de los tests implementados.
+Los tests usan **pytest** con una sesión de Spark local y datos de ejemplo chicos (no leen ni escriben tablas Delta). Cubren las funciones puras `limpiar_silver` y `construir_tablas_gold`:
+
+| Archivo | Qué verifica |
+| --- | --- |
+| `tests/test_silver.py` | Elimina filas sin `order_id` y duplicados exactos, recupera la cantidad corrupta y el descuento nulo desde `total_amount`, descarta las filas ambiguas, recupera `product_name` desde `product_id`, normaliza textos y mantiene `total_amount` coherente |
+| `tests/test_gold.py` | Ingresos y unidades solo de órdenes `Completed`, tasa de devolución por canal y agrupación mensual |
+
+```bash
+pytest
+```
+
+La primera ejecución tarda un poco porque arranca Spark (menos de un minuto); el resto de los tests reutiliza la misma sesión.
 
 ## Licencia
 
