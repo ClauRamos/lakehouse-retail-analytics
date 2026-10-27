@@ -194,17 +194,19 @@ KPIs del dataset (órdenes completadas):
 ## Tests
 
 Los tests usan **pytest** con una sesión de Spark local y datos de ejemplo chicos (no leen ni escriben tablas Delta). Cubren las funciones puras `limpiar_silver` y `construir_tablas_gold`:
-
+ 
 | Archivo | Qué verifica |
 | --- | --- |
 | `tests/test_silver.py` | Elimina filas sin `order_id` y duplicados exactos, recupera la cantidad corrupta y el descuento nulo desde `total_amount`, descarta las filas ambiguas, recupera `product_name` desde `product_id`, normaliza textos y mantiene `total_amount` coherente |
 | `tests/test_gold.py` | Ingresos y unidades solo de órdenes `Completed`, tasa de devolución por canal y agrupación mensual |
-
+ 
 ```bash
 pytest
 ```
-
+ 
 La primera ejecución tarda un poco porque arranca Spark (menos de un minuto); el resto de los tests reutiliza la misma sesión.
+ 
+Los tests también corren automáticamente en cada push y pull request con **GitHub Actions** (`.github/workflows/tests.yml`): instala Java 17 y las dependencias y ejecuta `pytest`.
 
 ## Licencia
 
