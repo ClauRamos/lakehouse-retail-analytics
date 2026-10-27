@@ -74,8 +74,9 @@ Resultado: **5.050 filas en Bronze → 4.999 en Silver**. Un control final verif
 
 ### Reglas de negocio de la capa Gold
 
-- **Ingresos** = suma de `total_amount` solo de órdenes con `status = Completed`.
-- **Tasa de devoluciones por canal** = órdenes `Returned` / total de órdenes del canal.
+- **Ingresos y unidades vendidas** = solo órdenes con `status = Completed` (no suman las canceladas ni las devueltas).
+- **Tasa de devoluciones por canal** = órdenes `Returned` / total de órdenes registradas del canal (incluye canceladas).
+- **Ticket promedio** = ingresos / órdenes completadas.
 
 ## Stack tecnológico
 
@@ -101,6 +102,7 @@ lakehouse-retail-analytics/
 │   └── gold/
 │
 ├── src/                 # Código del pipeline
+│   ├── pipeline.py      # Ejecuta Bronze -> Silver -> Gold
 │   ├── utils/           # Sesión de Spark
 │   ├── bronze/          # Ingesta
 │   ├── silver/          # Limpieza
@@ -156,7 +158,10 @@ HADOOP_HOME=C:\hadoop        # solo Windows
 Desde la raíz del proyecto, con el entorno virtual activo:
 
 ```bash
-# Pipeline, capa por capa
+# Pipeline completo (Bronze -> Silver -> Gold)
+python -m src.pipeline
+
+# O capa por capa
 python -m src.bronze.ingest
 python -m src.silver.clean
 python -m src.gold.aggregate
@@ -174,15 +179,28 @@ Las carpetas `data/bronze`, `data/silver` y `data/gold` no se versionan: se gene
 
 ## Resultados
 
-![Dashboard de ventas](docs/dashboard.png)
+<img src="docs/dashboard.png" alt="Vista previa del dashboard de ventas" width="900">
 
-KPIs del dataset (órdenes completadas):
+### Ver el dashboard
+
+El dashboard se ejecuta en tu máquina con Streamlit. Necesita que exista la capa Gold, así que hay que correr el pipeline una vez:
+
+```bash
+python -m src.pipeline
+streamlit run app.py
+```
+
+Se abre en `http://localhost:8501`.
+
+### KPIs del dataset (órdenes completadas)
 
 | Indicador | Valor |
 | --- | --- |
 | Ingresos totales | $4.200.714,89 |
 | Órdenes completadas | 2.986 |
+| Ticket promedio | $1.406,80 |
 | Órdenes registradas (todos los estados) | 4.999 |
+| Órdenes devueltas | 1.048 (21,0 %) |
 
 ## Tests
 
