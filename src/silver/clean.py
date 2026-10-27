@@ -1,6 +1,6 @@
 import os
 import sys
-from pyspark.sql import functions as F
+from pyspark.sql import Window, functions as F
 
 RUTA_RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if RUTA_RAIZ not in sys.path:
@@ -55,13 +55,18 @@ def clean_silver():
             )
         )
 
-        # 6. Nulos en textos
+        
+        # 6. Texto
         cid = F.trim(F.col("customer_id").cast("string"))
-        pname = F.trim(F.col("product_name"))
+
+        # product_name nulo o vacío: se recupera desde product_id (cada id tiene un único nombre)
+        pname = F.when(F.trim(F.col("product_name")) == "", F.lit(None)).otherwise(F.trim(F.col("product_name")))
+        nombre_por_id = F.first(pname, ignorenulls=True).over(Window.partitionBy("product_id"))
+
         df_clean = (
             df_clean
             .withColumn("customer_id", F.when(cid.isNull() | (cid == ""), F.lit("UNKNOWN")).otherwise(cid))
-            .withColumn("product_name", F.when(pname.isNull() | (pname == ""), F.lit("UNKNOWN")).otherwise(pname))
+            .withColumn("product_name", F.coalesce(pname, nombre_por_id, F.lit("UNKNOWN")))
             .withColumn("region", F.initcap(F.trim(F.col("region"))))
             .withColumn("category", F.initcap(F.trim(F.col("category"))))
         )
